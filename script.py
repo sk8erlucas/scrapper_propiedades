@@ -1,41 +1,96 @@
+import json
+from datetime import datetime
 import requests
-import pandas as pd
 from bs4 import BeautifulSoup
 
 
-l = list()
-o = {}
-
-target_url = "https://www.idealista.com/venta-viviendas/torrelavega/inmobiliaria-barreda/"
-headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36", "Accept-Language": "en-US,en;q=0.9",
-           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9", "Accept-Encoding": "gzip, deflate, br", "upgrade-insecure-requests": "1"}
-
-resp = requests.get(
-    "https://api.scrapingdog.com/scrape?api_key=674bc2de76025bde66024c0d&url={}&dynamic=false".format(target_url))
-
-print(resp.status_code)
-soup = BeautifulSoup(resp.text, 'html.parser')
-
-allProperties = soup.find_all("div", {"class": "item-info-container"})
-
-for i in range(0, len(allProperties)):
-    o["title"] = allProperties[i].find(
-        "a", {"class": "item-link"}).text.strip("\n")
-    o["price"] = allProperties[i].find(
-        "span", {"class": "item-price"}).text.strip("\n")
-    o["area-size"] = allProperties[i].find("div",
-                                           {"class": "item-detail-char"}).text.strip("\n")
-    o["description"] = allProperties[i].find(
-        "div", {"class": "item-description"}).text.strip("\n")
-    o["property-link"] = "https://www.idealista.com" + \
-        allProperties[i].find("a", {"class": "item-link"}).get('href')
-    l.append(o)
-    o = {}
+scraper_api_key = '74576979ee1749293c025c8aeac5d0ff'
 
 
-print(l)
+idealista_query = "https://www.idealista.com/en/venta-viviendas/barcelona-barcelona/"
+scraper_api_url = f'http://api.scraperapi.com/?api_key={
+    scraper_api_key}&url={idealista_query}'
 
-# Guardar la lista 'l' en un archivo Excel
-df = pd.DataFrame(l)
-df.to_excel("propiedades_idealista.xlsx", index=False)
-print("Los datos se han guardado en 'propiedades_idealista.xlsx'")
+
+response = requests.get(scraper_api_url)
+
+
+# Check if the request was successful (status code 200)
+if response.status_code == 200:
+    # Parse the HTML content using BeautifulSoup
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # Extract each house listing post
+    house_listings = soup.find_all('article', class_='item')
+
+    # Create a list to store extracted information
+    extracted_data = []
+
+    # Loop through each house listing and extract information
+    for index, listing in enumerate(house_listings):
+        # Extracting relevant information
+        title = listing.find('a', class_='item-link').get('title')
+        price = listing.find('span', class_='item-price').text.strip()
+
+        # Find all div elements with class 'item-detail'
+        item_details = listing.find_all('span', class_='item-detail')
+
+        # Extracting bedrooms and area from the item_details
+        bedrooms = item_details[0].text.strip(
+        ) if item_details and item_details[0] else "N/A"
+        area = item_details[1].text.strip() if len(
+            item_details) > 1 and item_details[1] else "N/A"
+
+        description = listing.find('div', class_='item-description').text.strip(
+        ) if listing.find('div', class_='item-description') else "N/A"
+        tags = listing.find('span', class_='listing-tags').text.strip(
+        ) if listing.find('span', class_='listing-tags') else "N/A"
+
+        # URL of the listing
+        listing_url = "https://www.idealista.com" + listing.find('a', class_='item-link').get('href')
+
+        # Extracting images
+        image_elements = listing.find_all('img')
+        print(image_elements)
+        image_tags = [img.prettify()
+                      for img in image_elements] if image_elements else []
+        print(image_tags)
+
+        # Store extracted information in a dictionary
+        listing_data = {
+            "Title": title,
+            "Price": price,
+            "Bedrooms": bedrooms,
+            "Area": area,
+            "Description": description,
+            "Tags": tags,
+            "URL": listing_url,
+            "Image Tags": image_tags
+        }
+
+        # Append the dictionary to the list
+        extracted_data.append(listing_data)
+
+        # Print or save the extracted information (you can modify this part as needed)
+        print(f"Listing {index + 1}:")
+        print(f"Title: {title}")
+        print(f"Price: {price}")
+        print(f"Bedrooms: {bedrooms}")
+        print(f"Area: {area}")
+        print(f"Description: {description}")
+        print(f"Tags: {tags}")
+        print(f"Image Tags: {', '.join(image_tags)}")
+        print("=" * 50)
+
+    # Save the extracted data to a JSON file
+    current_datetime = datetime.now().strftime("%Y%m%d%H%M%S")
+    json_filename = f"extracted_data_{current_datetime}.json"
+    with open(json_filename, "w", encoding="utf-8") as json_file:
+        json.dump(extracted_data, json_file, ensure_ascii=False, indent=2)
+
+    print(f"Extracted data saved to {json_filename}")
+
+
+else:
+    print(f"Error: Unable to retrieve HTML content. Status code: {
+          response.status_code}")
