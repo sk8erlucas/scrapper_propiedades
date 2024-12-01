@@ -1,21 +1,49 @@
 import json
 from datetime import datetime
+import time
 import requests
 from bs4 import BeautifulSoup
 import re
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 
 scraper_api_key = '74576979ee1749293c025c8aeac5d0ff'
 
 idealista_query = "https://www.idealista.com/en/venta-viviendas/barcelona-barcelona/"
 scraper_api_url = f'http://api.scraperapi.com/?api_key={scraper_api_key}&url={idealista_query}'
 
-response = requests.get(scraper_api_url)
-
 def extract_number(text):
     return ''.join(filter(str.isdigit, text))
 
 def get_text_or_na(element):
     return element.text.strip() if element else "N/A"
+
+def get_phone_number(driver, listing_url):
+    driver.get(listing_url)
+    try:
+        # Wait for the "View phone" button to be clickable
+        view_phone_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "a.see-phones-btn"))
+        )
+        view_phone_button.click()
+        
+        # Wait for the phone number to appear
+        phone_element = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "p.txt-big.txt-bold"))
+        )
+        return phone_element.text
+    except TimeoutException:
+        return "N/A"
+
+# Set up Selenium WebDriver (you need to have chromedriver installed and in your PATH)
+options = webdriver.ChromeOptions()
+options.add_argument('--headless')  # Run in headless mode
+driver = webdriver.Chrome(options=options)
+
+response = requests.get(scraper_api_url)
 
 if response.status_code == 200:
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -35,7 +63,7 @@ if response.status_code == 200:
             price = get_text_or_na(property_soup.find('span', class_='info-data-price'))
             ref_portal = property_soup.find('div', class_='ide-box-detail')['id'].split('-')[-1] if property_soup.find('div', class_='ide-box-detail') else "N/A"
             advertiser_name = get_text_or_na(property_soup.find('span', class_='about-advertiser-name'))
-            phone = get_text_or_na(property_soup.find('p', class_='txt-big txt-bold'))
+            phone = get_phone_number(driver, listing_url)
             advertiser_type = get_text_or_na(property_soup.find('div', class_='professional-name'))
             property_type = get_text_or_na(property_soup.find('span', class_='main-info__title-minor'))
             operation = "Venta"  # Assuming it's always for sale based on the URL
@@ -136,3 +164,6 @@ if response.status_code == 200:
 
 else:
     print(f"Error: Unable to retrieve HTML content. Status code: {response.status_code}")
+
+# Close the Selenium WebDriver
+driver.quit()
